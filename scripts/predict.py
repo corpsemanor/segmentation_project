@@ -6,12 +6,20 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import cv2
 import numpy as np
 from src.image_segmentation_model import ImageSegmentationModel
+from src.logger import setup_logger
 
 def main(image_path):
+
+    logger = setup_logger('predict_script', 'logs/predict.log')
+    logger.info(f'Starting prediction script for image: {image_path}')
+
     model = ImageSegmentationModel()
     model.model.load_weights('unet_model_multiclass.keras')
 
     image = cv2.imread(image_path)
+    if image is None:
+        logger.error(f'Failed to load image at {image_path}')
+        sys.exit(1)
     predicted_mask = model.predict(image)
 
     # Preprocess the predicted mask
@@ -35,6 +43,7 @@ def main(image_path):
     cv2.imshow('Predicted Mask', mask_color)
     cv2.imshow('Overlay', combined)
     cv2.waitKey(0)
+    logger.info('Prediction script completed.')
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":

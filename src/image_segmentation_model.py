@@ -4,14 +4,19 @@ import numpy as np
 import cv2
 from keras import layers, models, applications
 from pycocotools import mask as maskUtils
+import logging
+from .logger import setup_logger
 
 class ImageSegmentationModel:
     def __init__(self, input_shape=(256, 256, 3), num_classes=11):
+        self.logger = setup_logger(self.__class__.__name__, 'logs/image_segmentation_model.log')
+        self.logger.info('Initializing ImageSegmentationModel')
         self.input_shape = input_shape
         self.num_classes = num_classes
         self.model = self._build_model()
 
     def _build_model(self):
+        self.logger.info('Building model...')
         inputs = layers.Input(shape=self.input_shape)
         base_model = applications.EfficientNetB0(include_top=False, weights='imagenet', input_tensor=inputs)
         base_model.trainable = True
@@ -53,6 +58,7 @@ class ImageSegmentationModel:
 
         model = models.Model(inputs=[inputs], outputs=[outputs])
 
+        self.logger.info('Model built successfully.')
         return model
 
     def preprocess_data(self, annotation):
@@ -68,9 +74,14 @@ class ImageSegmentationModel:
         return tfds.load(dataset_name, split=split, with_info=False)
     
     def prepare_data(self, dataset):
+
+        self.logger.info('Preprocessin started...')
+
         images = []
         image_id_to_mask = {}
         image_id_to_index = {}
+
+        self.logger.info('Preprocessin images...')
 
         for idx, example in enumerate(dataset):
             img_id = example['image_id'].numpy()
@@ -81,6 +92,8 @@ class ImageSegmentationModel:
 
         images = np.array(images)
         masks = np.zeros((len(images), 256, 256), dtype=np.uint8)
+
+        self.logger.info('Preprocessin masks...')
 
         for example in dataset:
             img_id = example['image_id'].numpy()
@@ -101,6 +114,8 @@ class ImageSegmentationModel:
 
         masks = np.array(masks).astype(np.float32)
         images = images / 255.0
+
+        self.logger.info('Preprocessin completed.')
 
         return images, masks
 
@@ -132,6 +147,7 @@ class ImageSegmentationModel:
                 yield batch_images, batch_masks
 
     def train(self, train_images, train_masks, val_images, val_masks, epochs=75, batch_size=16):
+        self.logger.info('Starting training...')
         model = self.model
         model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
                       loss='sparse_categorical_crossentropy',
@@ -153,10 +169,12 @@ class ImageSegmentationModel:
             validation_steps=num_val_images // batch_size,
             callbacks=[early_stopping, model_checkpoint]
         )
+        self.logger.info('Training completed.')
 
         return history
 
     def predict(self, image):
+        self.logger.info('Making prediction...')
         image = cv2.resize(image, (256, 256))
         image = image / 255.0
         image = np.expand_dims(image, axis=0)
@@ -164,5 +182,6 @@ class ImageSegmentationModel:
         prediction = self.model.predict(image)
         predicted_mask = np.argmax(prediction, axis=-1)
         predicted_mask = predicted_mask[0]
+        self.logger.info('Prediction completed.')
 
         return predicted_mask
