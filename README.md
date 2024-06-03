@@ -4,28 +4,6 @@
 
 Этот проект реализует модель сегментации изображений, используя модифицированную архитектуру U-Net. Модель предназначена для предсказания масок сегментации для заданного набора изображений.
 
-## Структура проекта
-
-```plaintext
-project/
-│
-├── src/
-│   ├── __init__.py
-│   ├── image_segmentation_model.py
-│
-├── scripts/
-│   ├── __init__.py
-│   ├── train.py
-│   ├── predict.py
-│
-├── tests/
-│   ├── __init__.py
-│   ├── test_image_segmentation_model.py
-│
-├── README.md
-├── requirements.txt
-└── .gitignore
-```
 
 ## Установка
 
