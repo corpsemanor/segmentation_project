@@ -1,36 +1,36 @@
 
 # Image Segmentation Model
 
-Этот проект реализует модель сегментации изображений, используя модифицированную архитектуру U-Net. Модель предназначена для предсказания масок сегментации для заданного набора изображений.
+This project implements an image segmentation model using a modified U-Net architecture. The model is designed to predict segmentation masks for a given set of images.
 
 
-## Установка
+## Installation
 
-Для установки необходимых зависимостей выполните:
+To install the required dependencies, run:
 
 ```
 pip install -r requirements.txt
 ```
 
-## Обучение
+## Training
 
-Для обучения модели выполните:
+To train the model, run:
 
 ```
 python scripts/train.py
 ```
 
-## Предсказание
+## Prediction
 
-Для предсказания на изображении выполните:
+To make a prediction on an image, run:
 
 ```
 python scripts/predict.py <path_to_image>
 ```
 
-## Тестирование
+## Testing
 
-Для запуска модульных тестов выполните:
+To run the unit tests, run:
 
 ```
 python -m unittest discover tests
