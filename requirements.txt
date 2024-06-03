@@ -1,0 +1,7 @@
+tensorflow
+numpy
+opencv-python
+keras
+tensorflow-datasets
+matplotlib
+unittest
