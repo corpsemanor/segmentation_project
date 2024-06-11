@@ -1,19 +1,25 @@
+import os
+os.environ['_MANUAL_VAR_INIT'] = '1'
+
 import tensorflow as tf
 import tensorflow_datasets as tfds
 import numpy as np
 import cv2
 from keras import layers, models, applications
 from pycocotools import mask as maskUtils
-import logging
 from .logger import setup_logger
 
 class ImageSegmentationModel:
-    def __init__(self, input_shape=(256, 256, 3), num_classes=11):
-        self.logger = setup_logger(self.__class__.__name__, 'logs/image_segmentation_model.log')
+    def __init__(self, input_shape=(256, 256, 3), num_classes=11, model_path=None, logger=None):
+        self.logger = logger if logger else setup_logger(self.__class__.__name__, 'logs/image_segmentation_model.log')
         self.logger.info('Initializing ImageSegmentationModel')
         self.input_shape = input_shape
         self.num_classes = num_classes
-        self.model = self._build_model()
+
+        if model_path:
+            self.model = self.load_model(model_path)
+        else:
+            self.model = self._build_model()
 
     def _build_model(self):
         self.logger.info('Building model...')
@@ -75,13 +81,13 @@ class ImageSegmentationModel:
     
     def prepare_data(self, dataset):
 
-        self.logger.info('Preprocessin started...')
+        self.logger.info('Preprocessing started...')
 
         images = []
         image_id_to_mask = {}
         image_id_to_index = {}
 
-        self.logger.info('Preprocessin images...')
+        self.logger.info('Preprocessing images...')
 
         for idx, example in enumerate(dataset):
             img_id = example['image_id'].numpy()
@@ -93,7 +99,7 @@ class ImageSegmentationModel:
         images = np.array(images)
         masks = np.zeros((len(images), 256, 256), dtype=np.uint8)
 
-        self.logger.info('Preprocessin masks...')
+        self.logger.info('Preprocessing masks...')
 
         for example in dataset:
             img_id = example['image_id'].numpy()
@@ -115,24 +121,9 @@ class ImageSegmentationModel:
         masks = np.array(masks).astype(np.float32)
         images = images / 255.0
 
-        self.logger.info('Preprocessin completed.')
+        self.logger.info('Preprocessing completed.')
 
         return images, masks
-
-    @staticmethod
-    def dice_loss(y_true, y_pred, smooth=1.):
-        y_true_f = tf.keras.backend.flatten(y_true)
-        y_pred_f = tf.keras.backend.flatten(y_pred)
-        intersection = tf.keras.backend.sum(y_true_f * y_pred_f)
-        score = (2. * intersection + smooth) / (tf.keras.backend.sum(y_true_f) + tf.keras.backend.sum(y_pred_f) + smooth)
-        return 1. - score
-
-    def dice_coefficient(self, y_true, y_pred):
-        smooth = 1.
-        y_true_f = tf.keras.backend.flatten(tf.keras.backend.one_hot(tf.keras.backend.cast(y_true, 'int32'), num_classes=self.num_classes))
-        y_pred_f = tf.keras.backend.flatten(y_pred)
-        intersection = tf.keras.backend.sum(y_true_f * y_pred_f)
-        return (2. * intersection + smooth) / (tf.keras.backend.sum(y_true_f) + tf.keras.backend.sum(y_pred_f) + smooth)
 
     def data_generator(self, images, masks, batch_size):
         while True:
@@ -146,42 +137,48 @@ class ImageSegmentationModel:
 
                 yield batch_images, batch_masks
 
-    def train(self, train_images, train_masks, val_images, val_masks, epochs=75, batch_size=16):
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
+    def save(self, filepath):
+        self.model.save(filepath)
+        
+    def train(self, train_images, train_masks, val_images, val_masks, epochs=70, batch_size=16):
         self.logger.info('Starting training...')
         model = self.model
-        model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
-                      loss='sparse_categorical_crossentropy',
-                      metrics=['accuracy', self.dice_coefficient])
-        early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=20, restore_best_weights=True)
-        model_checkpoint = tf.keras.callbacks.ModelCheckpoint('unet_model_multiclass.keras', save_best_only=True, monitor='val_loss', mode='min')
+        model.compile(
+            optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
+            loss='sparse_categorical_crossentropy',
+            metrics=['sparse_categorical_accuracy']
+        )
+
+        early_stopping = tf.keras.callbacks.EarlyStopping(
+            monitor='val_loss', patience=20, restore_best_weights=True
+        )
 
         train_gen = self.data_generator(train_images, train_masks, batch_size)
         val_gen = self.data_generator(val_images, val_masks, batch_size)
 
-        num_train_images = len(train_images) if isinstance(train_images, list) else train_images.shape[0]
-        num_val_images = len(val_images) if isinstance(val_images, list) else val_images.shape[0]
+        num_train_steps = len(train_images) // batch_size
+        num_val_steps = len(val_images) // batch_size
 
         history = model.fit(
             train_gen,
-            validation_data=val_gen,
+            steps_per_epoch=num_train_steps,
             epochs=epochs,
-            steps_per_epoch=num_train_images // batch_size,
-            validation_steps=num_val_images // batch_size,
-            callbacks=[early_stopping, model_checkpoint]
+            validation_data=val_gen,
+            validation_steps=num_val_steps,
+            callbacks=[early_stopping]
         )
-        self.logger.info('Training completed.')
+
+        model.save('saved_model.h5')
+
+        self.logger.info('Training completed')
 
         return history
-
-    def predict(self, image):
-        self.logger.info('Making prediction...')
-        image = cv2.resize(image, (256, 256))
-        image = image / 255.0
-        image = np.expand_dims(image, axis=0)
-
-        prediction = self.model.predict(image)
-        predicted_mask = np.argmax(prediction, axis=-1)
-        predicted_mask = predicted_mask[0]
-        self.logger.info('Prediction completed.')
-
-        return predicted_mask
+    
+    def load_model(self, model_path):
+        self.logger.info(f'Loading model from {model_path}')
+        model = tf.keras.models.load_model(model_path)
+        return model
