@@ -15,12 +15,12 @@ def main(image_path):
 
     model = tf.keras.models.load_model('saved_model.h5')
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    image = cv2.imread(image_path)
 
     if image is None:
         logger.error(f'Failed to load image at {image_path}')
         sys.exit(1)
 
-    image = cv2.imread(image_path)
     show_img = cv2.resize(image, (256, 256))
     image = cv2.resize(image, (256, 256)) / 255.0
     image = np.expand_dims(image, axis=0)
