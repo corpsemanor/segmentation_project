@@ -2,13 +2,13 @@ import numpy as np
 import mlflow
 from keras import callbacks
 import matplotlib.pyplot as plt
-import os
 
 class MLflowCallback(callbacks.Callback):
-    def __init__(self, val_data, num_images=5):
+    def __init__(self, val_data, num_images=10, artifact_path='s3://tests-mlflow/artifacts/8'):
         super().__init__()
         self.val_data = val_data
         self.num_images = num_images
+        self.artifact_path = artifact_path
 
     def on_epoch_end(self, epoch, logs=None):
         val_images, val_masks = self.val_data
@@ -23,7 +23,6 @@ class MLflowCallback(callbacks.Callback):
             axes[i][0].set_title('Image')
             axes[i][0].axis('off')
             
-            # Check if the mask has 3 dimensions
             if masks[i].ndim == 3:
                 axes[i][1].imshow(masks[i][:, :, 0], cmap='gray')
             else:
@@ -35,9 +34,9 @@ class MLflowCallback(callbacks.Callback):
             axes[i][2].imshow(prediction_mask, cmap='gray')
             axes[i][2].set_title('Predicted Mask')
             axes[i][2].axis('off')
-        save_dir = 'save'
-        save_path = os.path.join(save_dir, f"epoch_{epoch + 1}.png")
+
         plt.tight_layout()
-        plt.savefig(save_path)
+        visualization_path = f"epoch_{epoch + 1}_visualization.png"
+        plt.savefig(visualization_path)
         plt.close(fig)
-        # mlflow.log_artifact(f"epoch_{epoch + 1}.png")
+        mlflow.log_artifact(visualization_path)

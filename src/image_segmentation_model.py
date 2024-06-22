@@ -172,7 +172,7 @@ class ImageSegmentationModel:
             callbacks=[early_stopping]
         )
 
-        model.save('saved_model.h5')
+        # model.save('saved_model.h5')
 
         self.logger.info('Training completed')
 

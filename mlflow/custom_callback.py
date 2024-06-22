@@ -6,32 +6,34 @@ import numpy as np
 import tensorflow as tf
 import mlflow
 import mlflow.keras
-
+from keras import callbacks
 from src.image_segmentation_model import ImageSegmentationModel
-from callback import MLflowCallback  # Импортируйте ваш кастомный колбэк
+from callback import MLflowCallback
 
-# Настройка переменных окружения для аутентификации
-os.environ['MLFLOW_TRACKING_USERNAME'] = 'mlflow'
-os.environ['MLFLOW_TRACKING_PASSWORD'] = '5u#K)R!@|<o==TXP<SlW'
+os.environ['AWS_ACCESS_KEY_ID'] = ''
+os.environ['AWS_SECRET_ACCESS_KEY'] = ''
 
-# Настройка MLflow
-mlflow.set_tracking_uri("https://mlflow.immoviewer.com")
+os.environ['MLFLOW_TRACKING_USERNAME'] = ''
+os.environ['MLFLOW_TRACKING_PASSWORD'] = ''
+
+mlflow.set_tracking_uri("")
 mlflow.set_experiment("vladimir_semantic")
 
-# Проверка доступа к серверу MLflow
 try:
     client = mlflow.tracking.MlflowClient()
     experiment = client.get_experiment_by_name("vladimir_semantic")
+
     if experiment:
         print(f"Experiment '{experiment.name}' exists with ID {experiment.experiment_id}")
     else:
         print(f"Experiment 'vladimir_semantic' does not exist. Creating new experiment.")
-        mlflow.create_experiment("vladimir_semantic")
+        experiment_id = mlflow.create_experiment("vladimir_semantic")
+        client.create_experiment_permission(experiment_id, 'mlflow', 'MANAGE')
+
 except Exception as e:
     print(f"Failed to connect to MLflow server: {e}")
     sys.exit(1)
 
-# Создание и компиляция модели
 input_shape = (256, 256, 3)
 num_classes = 11
 image_segmentation_model = ImageSegmentationModel(input_shape=input_shape, num_classes=num_classes)
@@ -49,15 +51,27 @@ images, masks = image_segmentation_model.prepare_data(dataset)
 train_images, train_masks = images[:2000], masks[:2000]
 val_images, val_masks = images[4400:], masks[4400:]
 
-# Создание генераторов данных
 batch_size = 16
 train_generator = image_segmentation_model.data_generator(train_images, train_masks, batch_size)
 val_generator = image_segmentation_model.data_generator(val_images, val_masks, batch_size)
 
-# Установка колбэка
-mlflow_callback = MLflowCallback(val_data=(val_images, val_masks), num_images=5)
+class CustomModelCheckpoint(callbacks.Callback):
+    def __init__(self, filepath, save_freq=5):
+        super(CustomModelCheckpoint, self).__init__()
+        self.filepath = filepath
+        self.save_freq = save_freq
 
-# Обучение модели
+    def on_epoch_end(self, epoch, logs=None):
+        if (epoch + 1) % self.save_freq == 0:
+            filepath = self.filepath.format(epoch=epoch + 1)
+            self.model.save(filepath)
+            mlflow.log_artifact(filepath)
+
+checkpoint_path = "checkpoints/epoch_{epoch:02d}.h5"
+checkpoint_callback = CustomModelCheckpoint(filepath=checkpoint_path, save_freq=5)
+
+mlflow_callback = MLflowCallback(val_data=(val_images, val_masks), num_images=10)
+
 with mlflow.start_run():
     mlflow.keras.autolog()
 
@@ -67,5 +81,7 @@ with mlflow.start_run():
         epochs=20,
         validation_data=val_generator,
         validation_steps=len(val_images) // batch_size,
-        callbacks=[mlflow_callback]
+        callbacks=[checkpoint_callback, mlflow_callback]
     )
+
+    mlflow.log_artifacts("save")
